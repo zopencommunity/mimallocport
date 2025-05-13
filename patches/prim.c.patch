@@ -1,0 +1,135 @@
+diff --git a/src/prim/unix/prim.c b/src/prim/unix/prim.c
+index ad6ca2a..14e61fe 100644
+--- a/src/prim/unix/prim.c
++++ b/src/prim/unix/prim.c
+@@ -70,7 +70,6 @@ terms of the MIT license. A copy of the license can be found in the file
+ #define MADV_FREE  POSIX_MADV_FREE
+ #endif
+ 
+-  
+ //------------------------------------------------------------------------------------
+ // Use syscalls for some primitives to allow for libraries that override open/read/close etc.
+ // and do allocation themselves; using syscalls prevents recursion when mimalloc is
+@@ -200,6 +199,8 @@ static int unix_madvise(void* addr, size_t size, int advice) {
+   int res = madvise((caddr_t)addr, size, advice);  // Solaris needs cast (issue #520)
+   #elif defined(__QNX__)
+   int res = posix_madvise(addr, size, advice);
++  #elif defined(__MVS__)
++  int res = 0;
+   #else
+   int res = madvise(addr, size, advice);
+   #endif
+@@ -278,7 +279,11 @@ static int unix_mmap_fd(void) {
+ 
+ static void* unix_mmap(void* addr, size_t size, size_t try_alignment, int protect_flags, bool large_only, bool allow_large, bool* is_large) {
+   #if !defined(MAP_ANONYMOUS)
++  #if defined(MAP_ANON)
+   #define MAP_ANONYMOUS  MAP_ANON
++  #else
++  #define MAP_ANONYMOUS  0
++  #endif
+   #endif
+   #if !defined(MAP_NORESERVE)
+   #define MAP_NORESERVE  0
+@@ -427,7 +432,9 @@ int _mi_prim_commit(void* start, size_t size, bool* is_zero) {
+ int _mi_prim_decommit(void* start, size_t size, bool* needs_recommit) {
+   int err = 0;
+   // decommit: use MADV_DONTNEED as it decreases rss immediately (unlike MADV_FREE)
++#ifndef __MVS__
+   err = unix_madvise(start, size, MADV_DONTNEED);
++#endif
+   #if !MI_DEBUG && !MI_SECURE
+     *needs_recommit = false;
+   #else
+@@ -460,7 +467,11 @@ int _mi_prim_reset(void* start, size_t size) {
+     err = unix_madvise(start, size, MADV_DONTNEED);
+   }
+   #else
++#ifdef __MVS__
++  int err = 0;
++#elif
+   int err = unix_madvise(start, size, MADV_DONTNEED);
++#endif
+   #endif
+   return err;
+ }
+@@ -640,7 +651,7 @@ mi_msecs_t _mi_prim_clock_now(void) {
+ // Process info
+ //----------------------------------------------------------------
+ 
+-#if defined(__unix__) || defined(__unix) || defined(unix) || defined(__APPLE__) || defined(__HAIKU__)
++#if defined(__unix__) || defined(__unix) || defined(unix) || defined(__APPLE__) || defined(__HAIKU__) || defined(__MVS__)
+ #include <stdio.h>
+ #include <unistd.h>
+ #include <sys/resource.h>
+@@ -663,7 +674,7 @@ void _mi_prim_process_info(mi_process_info_t* pinfo)
+   getrusage(RUSAGE_SELF, &rusage);
+   pinfo->utime = timeval_secs(&rusage.ru_utime);
+   pinfo->stime = timeval_secs(&rusage.ru_stime);
+-#if !defined(__HAIKU__)
++#if !defined(__HAIKU__) && !defined(__MVS__)
+   pinfo->page_faults = rusage.ru_majflt;
+ #endif
+ #if defined(__HAIKU__)
+@@ -693,7 +704,9 @@ void _mi_prim_process_info(mi_process_info_t* pinfo)
+   }
+   #endif
+ #else
++#if !defined(__MVS__)
+   pinfo->peak_rss = rusage.ru_maxrss * 1024;  // Linux/BSD report in KiB
++#endif
+ #endif
+   // use defaults for commit
+ }
+@@ -865,7 +878,19 @@ bool _mi_prim_random_buf(void* buf, size_t buf_len) {
+ 
+ // use pthread local storage keys to detect thread ending
+ // (and used with MI_TLS_PTHREADS for the default heap)
++
++#if defined(__MVS__)
++pthread_key_t _mi_heap_default_key;
++static pthread_key_t invalid_key;
++
++__attribute__((constructor))
++static void _thread_key_init (void) {
++  memset(&_mi_heap_default_key, 0xFF, sizeof(pthread_key_t) );
++  memset(&invalid_key, 0xFF, sizeof(pthread_key_t) );
++}
++#else
+ pthread_key_t _mi_heap_default_key = (pthread_key_t)(-1);
++#endif
+ 
+ static void mi_pthread_done(void* value) {
+   if (value!=NULL) {
+@@ -874,18 +899,30 @@ static void mi_pthread_done(void* value) {
+ }
+ 
+ void _mi_prim_thread_init_auto_done(void) {
++#if defined(__MVS__)
++  mi_assert_internal(memcmp(&_mi_heap_default_key, &invalid_key, sizeof(pthread_key_t)) == 0);
++#else
+   mi_assert_internal(_mi_heap_default_key == (pthread_key_t)(-1));
++#endif
+   pthread_key_create(&_mi_heap_default_key, &mi_pthread_done);
+ }
+ 
+ void _mi_prim_thread_done_auto_done(void) {
++#if defined(__MVS__)
++  if (memcmp(&_mi_heap_default_key, &invalid_key, sizeof(pthread_key_t)) != 0) {
++#else
+   if (_mi_heap_default_key != (pthread_key_t)(-1)) {  // do not leak the key, see issue #809
+-    pthread_key_delete(_mi_heap_default_key);
++#endif
++	  pthread_key_delete(_mi_heap_default_key);
+   }
+ }
+ 
+ void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
++#if defined(__MVS__)
++  if (memcmp(&_mi_heap_default_key, &invalid_key, sizeof(pthread_key_t)) != 0) {
++#else
+   if (_mi_heap_default_key != (pthread_key_t)(-1)) {  // can happen during recursive invocation on freeBSD
++#endif
+     pthread_setspecific(_mi_heap_default_key, heap);
+   }
+ }

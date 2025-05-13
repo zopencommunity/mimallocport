@@ -1,0 +1,14 @@
+diff --git a/include/mimalloc/prim.h b/include/mimalloc/prim.h
+index bddd66e..825ea26 100644
+--- a/include/mimalloc/prim.h
++++ b/include/mimalloc/prim.h
+@@ -8,6 +8,9 @@ terms of the MIT license. A copy of the license can be found in the file
+ #ifndef MIMALLOC_PRIM_H
+ #define MIMALLOC_PRIM_H
+ 
++#ifdef __MVS__
++#include <zos-tls.h>
++#endif
+ 
+ // --------------------------------------------------------------------------
+ // This file specifies the primitive portability API.
