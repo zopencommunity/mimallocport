@@ -1,5 +1,5 @@
 diff --git a/include/mimalloc/prim.h b/include/mimalloc/prim.h
-index bddd66e..825ea26 100644
+index bddd66e..3d6aee4 100644
 --- a/include/mimalloc/prim.h
 +++ b/include/mimalloc/prim.h
 @@ -8,6 +8,9 @@ terms of the MIT license. A copy of the license can be found in the file
@@ -12,3 +12,16 @@ index bddd66e..825ea26 100644
  
  // --------------------------------------------------------------------------
  // This file specifies the primitive portability API.
+@@ -269,7 +272,12 @@ static inline void mi_prim_tls_slot_set(size_t slot, void* value) mi_attr_noexce
+ 
+ 
+ // defined in `init.c`; do not use these directly
++#ifdef __MVS__
++extern mi_decl_thread mi_heap_t* _mi_heap_default;
++extern tls_t tls_mi_heap_default;
++#else
+ extern mi_decl_thread mi_heap_t* _mi_heap_default;  // default heap to allocate from
++#endif
+ extern bool _mi_process_is_initialized;             // has mi_process_init been called?
+ 
+ static inline mi_threadid_t _mi_prim_thread_id(void) mi_attr_noexcept;
