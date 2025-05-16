@@ -1,5 +1,5 @@
 diff --git a/src/options.c b/src/options.c
-index 4759e0b..8d6350d 100644
+index 4759e0b..978e38e 100644
 --- a/src/options.c
 +++ b/src/options.c
 @@ -12,7 +12,9 @@ terms of the MIT license. A copy of the license can be found in the file
@@ -8,18 +8,25 @@ index 4759e0b..8d6350d 100644
  
 -
 +#ifdef __MVS__
-+#include <zos-tls.h>
++#include <mimalloc/tls.h>
 +#endif
  
  static long mi_max_error_count   = 16; // stop outputting errors after this (use < 0 for no limit)
  static long mi_max_warning_count = 16; // stop outputting warnings after this (use < 0 for no limit)
-@@ -171,8 +173,21 @@ static bool mi_option_has_size_in_kib(mi_option_t option) {
+@@ -171,8 +173,28 @@ static bool mi_option_has_size_in_kib(mi_option_t option) {
    return (option == mi_option_reserve_os_memory || option == mi_option_arena_reserve);
  }
  
 +#ifdef __MVS__
-+tls_t tls_recurse = {0};
-+bool *recurse_p = NULL;
++//tls_t tls_recurse = {0};
++//bool *recurse_p = NULL;
++
++tlss_t recurse_tls = {
++    .sz = sizeof(bool)
++};
++
++static const bool recurse_init = false;
++#define mi_recurse TLS_VAR(recurse_tls, bool, &recurse_init)
 +
 +#else
 +static mi_decl_thread bool recurse = false;
@@ -27,7 +34,7 @@ index 4759e0b..8d6350d 100644
 +
  void _mi_options_init(void) {
    // called on process load
-+#ifdef __MVS__
++#if 0
 +  tls_recurse.sz = sizeof(bool);
 +  recurse_p = __tlsValue(&tls_recurse);
 +  *recurse_p = false;
@@ -35,7 +42,7 @@ index 4759e0b..8d6350d 100644
    mi_add_stderr_output(); // now it safe to use stderr for output
    for(int i = 0; i < _mi_option_last; i++ ) {
      mi_option_t option = (mi_option_t)i;
-@@ -412,16 +427,28 @@ static _Atomic(size_t) warning_count; // = 0;  // when >= max_warning_count stop
+@@ -412,16 +434,31 @@ static _Atomic(size_t) warning_count; // = 0;  // when >= max_warning_count stop
  // variables on demand. This is why we use a _mi_preloading test on such
  // platforms. However, C code generator may move the initial thread local address
  // load before the `if` and we therefore split it out in a separate function.
@@ -43,10 +50,12 @@ index 4759e0b..8d6350d 100644
  
  static mi_decl_noinline bool mi_recurse_enter_prim(void) {
 +#ifdef __MVS__
-+  if (*recurse_p) return false;
-+  tls_recurse.sz = sizeof(bool);
-+  recurse_p = __tlsValue(&tls_recurse);
-+  *recurse_p = true;
++  //if (*recurse_p) return false;
++  //tls_recurse.sz = sizeof(bool);
++  //recurse_p = __tlsValue(&tls_recurse);
++  //*recurse_p = true;
++  if (mi_recurse) return false;
++     mi_recurse = true;
 +#else	
    if (recurse) return false;
    recurse = true;
@@ -56,9 +65,10 @@ index 4759e0b..8d6350d 100644
  
  static mi_decl_noinline void mi_recurse_exit_prim(void) {
 +#ifdef __MVS__
-+  tls_recurse.sz = sizeof(bool);
-+  recurse_p = __tlsValue(&tls_recurse);
-+  *recurse_p = false;
++  //tls_recurse.sz = sizeof(bool);
++  //recurse_p = __tlsValue(&tls_recurse);
++  //*recurse_p = false;
++  mi_recurse = false;
 +#else
    recurse = false;
 +#endif

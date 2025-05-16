@@ -33,7 +33,6 @@ export ZOPEN_RUNTIME_DEPS=""
 ## Current available prerequisites: zos24 zos25 zos31 procfs (see https://github.com/zopencommunity/meta/blob/main/include/prereq.sh for a current list)
 export ZOPEN_SYSTEM_PREREQ=""
 
-
 ###
 ### Build stage control environment variables
 ###
@@ -45,12 +44,12 @@ export ZOPEN_SYSTEM_PREREQ=""
 #export ZOPEN_CLEAN=""         ## Clean up program to run (defaults to 'make')
 
 export ZOPEN_CONFIGURE="cmake"
-export ZOPEN_CONFIGURE_OPTS="-B ../build  --install-prefix \$ZOPEN_INSTALL_DIR/ -DBUILD_TESTING=ON -DENABLE_STATIC_INIT=ON -DCMAKE_INSTALL_PREFIX=\$ZOPEN_INSTALL_DIR/ -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON ."
-export ZOPEN_MAKE="cmake"
-export ZOPEN_MAKE_OPTS=" --build ../build --parallel \$ZOPEN_NUM_JOBS --target all"
+export ZOPEN_CONFIGURE_OPTS="-B ../build  --install-prefix \$ZOPEN_INSTALL_DIR/ -DCMAKE_BUILD_TYPE=Release -DMI_OVERRIDE=OFF -DBUILD_TESTING=ON -DENABLE_STATIC_INIT=ON -DCMAKE_INSTALL_PREFIX=\$ZOPEN_INSTALL_DIR/ -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON ."
+#export ZOPEN_MAKE="cmake"
+export ZOPEN_MAKE_OPTS="-C ../build"
 export ZOPEN_CHECK_OPTS="-C ../build test"
-export ZOPEN_INSTALL="cmake"
-export ZOPEN_INSTALL_OPTS="--install ../build"
+#export ZOPEN_INSTALL="cmake"
+export ZOPEN_INSTALL_OPTS="-C ../build install"
 
 ###
 ### Required user-supplied functions

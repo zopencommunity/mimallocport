@@ -1,5 +1,5 @@
 diff --git a/src/init.c b/src/init.c
-index ddded15..75860a9 100644
+index ddded15..c14976d 100644
 --- a/src/init.c
 +++ b/src/init.c
 @@ -11,6 +11,9 @@ terms of the MIT license. A copy of the license can be found in the file
@@ -7,30 +7,37 @@ index ddded15..75860a9 100644
  #include <stdlib.h>  // atexit
  
 +#ifdef __MVS__
-+#include <zos-tls.h>
++#include <mimalloc/tls.h>
 +#endif
  
  // Empty page used to initialize the small free pages array
  const mi_page_t _mi_page_empty = {
-@@ -146,7 +149,12 @@ mi_threadid_t _mi_thread_id(void) mi_attr_noexcept {
+@@ -146,7 +149,19 @@ mi_threadid_t _mi_thread_id(void) mi_attr_noexcept {
  }
  
  // the thread-local default heap for allocation
 +#ifdef __MVS__
-+mi_decl_thread mi_heap_t * _mi_heap_default = NULL;
-+tls_t tls_mi_heap_default;
++//mi_decl_thread mi_heap_t * _mi_heap_default = NULL;
++//tls_t tls_mi_heap_default;
++tlss_t heap_tls = {
++    .sz = sizeof(mi_heap_t*)
++};
++
++const mi_heap_t* heap_tls_init = (mi_heap_t*)&_mi_heap_empty;
++
++//#define _mi_heap_default TLS_VAR(heap_tls, mi_heap_t*, &heap_tls_init)
 +#else
  mi_decl_thread mi_heap_t* _mi_heap_default = (mi_heap_t*)&_mi_heap_empty;
 +#endif
  
  extern mi_decl_hidden mi_heap_t _mi_heap_main;
  
-@@ -386,6 +394,13 @@ void _mi_thread_data_collect(void) {
+@@ -386,6 +401,13 @@ void _mi_thread_data_collect(void) {
  
  // Initialize the thread local default heap, called from `mi_thread_init`
  static bool _mi_thread_heap_init(void) {
 +
-+#ifdef __MVS__
++#if 0
 +  tls_mi_heap_default.sz = sizeof(mi_heap_t);
 +  _mi_heap_default = __tlsValue(&tls_mi_heap_default);
 +  memcpy(_mi_heap_default, &_mi_heap_empty, sizeof(mi_heap_t)); 
@@ -39,16 +46,17 @@ index ddded15..75860a9 100644
    if (mi_heap_is_initialized(mi_prim_get_default_heap())) return true;
    if (_mi_is_main_thread()) {
      // mi_assert_internal(_mi_heap_main.thread_id != 0);  // can happen on freeBSD where alloc is called before any initialization
-@@ -559,7 +574,13 @@ void _mi_heap_set_default_direct(mi_heap_t* heap)  {
+@@ -559,7 +581,14 @@ void _mi_heap_set_default_direct(mi_heap_t* heap)  {
    #elif defined(MI_TLS_PTHREAD)
    // we use _mi_heap_default_key
    #else
 +#ifdef __MVS__
-+  tls_mi_heap_default.sz = sizeof(mi_heap_t);
-+  _mi_heap_default = __tlsValue(&tls_mi_heap_default);
-+  memcpy(_mi_heap_default, heap, sizeof(mi_heap_t));
-+#else
++  //tls_mi_heap_default.sz= sizeof(mi_heap_t);
++  //_mi_heap_default = __tlsValue(&tls_mi_heap_default);
++  //memcpy(_mi_heap_default, heap, sizeof(mi_heap_t));
    _mi_heap_default = heap;
++#else
++  _mi_heap_default = heap;
 +#endif
    #endif
  

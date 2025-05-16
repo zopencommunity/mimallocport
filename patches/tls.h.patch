@@ -1,0 +1,138 @@
+diff --git a/include/mimalloc/tls.h b/include/mimalloc/tls.h
+new file mode 100644
+index 0000000..3429045
+--- /dev/null
++++ b/include/mimalloc/tls.h
+@@ -0,0 +1,132 @@
++#ifndef MANUAL_TLS_H
++#define MANUAL_TLS_H
++
++#include <pthread.h>
++#include <stdint.h>
++#include <string.h>
++#include <assert.h>
++#include <stdio.h>
++
++#define MAX_TLS_SIZE 256
++#define MAX_THREADS 128
++
++typedef struct {
++    size_t sz;
++    pthread_key_t key;
++    pthread_once_t once;
++} tlss_t;
++
++static char tls_storage[MAX_THREADS][MAX_TLS_SIZE];
++static int tls_initialized[MAX_THREADS] = {0};
++
++static pthread_key_t thread_index_key;
++static pthread_once_t thread_index_once = PTHREAD_ONCE_INIT;
++
++static int free_indices[MAX_THREADS];
++static int free_top = -1;
++static pthread_mutex_t pool_lock = PTHREAD_MUTEX_INITIALIZER;
++
++static void return_index_to_pool(void *val) {
++    int idx = (int)(intptr_t)val;
++    pthread_mutex_lock(&pool_lock);
++    free_indices[++free_top] = idx;
++    pthread_mutex_unlock(&pool_lock);
++}
++
++static void init_thread_index_key() {
++    int rc = pthread_key_create(&thread_index_key, return_index_to_pool);
++    assert(rc == 0);
++    for (int i = MAX_THREADS - 1; i >= 0; --i) {
++        free_indices[++free_top] = i;
++    }
++}
++
++static int get_thread_index() {
++    pthread_once(&thread_index_once, init_thread_index_key);
++
++    void *val = pthread_getspecific(thread_index_key);
++    if (val != NULL) return (int)(intptr_t)val;
++
++    pthread_mutex_lock(&pool_lock);
++    if (free_top < 0) {
++        pthread_mutex_unlock(&pool_lock);
++        fprintf(stderr, "No available TLS indices!\n");
++        return -1;
++    }
++    int idx = free_indices[free_top--];
++    pthread_mutex_unlock(&pool_lock);
++
++    int rc = pthread_setspecific(thread_index_key, (void *)(intptr_t)idx);
++    assert(rc == 0);
++
++    return idx;
++}
++
++static void _cleanup(void *ptr) {
++    // Optional cleanup
++}
++
++void *__tlssPtrAlloc(size_t sz, pthread_key_t *k, pthread_once_t *o, const void *initvalue) {
++    unsigned int initv = 0;
++    unsigned int expv = 0;
++    unsigned int newv = 1;
++
++    __asm volatile(" cs  %0,%2,%1 \n"
++                   : "+r"(expv), "+m"(*o)
++                   : "r"(newv)
++                   :);
++    initv = expv;
++
++    if (initv == 2) {
++        // already initialized
++    } else if (initv == 0) {
++        pthread_key_create(k, _cleanup);
++        expv = 1;
++        newv = 2;
++        __asm volatile(" cs  %0,%2,%1 \n"
++                       : "+r"(expv), "+m"(*o)
++                       : "r"(newv)
++                       :);
++        initv = expv;
++    } else {
++        while (initv != 2) {
++            expv = 0;
++            newv = 1;
++            __asm volatile(" la 15,0\n"
++                           " svc 137\n"
++                           " cs  %0,%2,%1 \n"
++                           : "+r"(expv), "+m"(*o)
++                           : "r"(newv)
++                           : "r15", "r6");
++            initv = expv;
++        }
++    }
++
++    void *ptr = pthread_getspecific(*k);
++    if (!ptr) {
++        int tid = get_thread_index();
++        if (tid < 0 || tid >= MAX_THREADS || sz > MAX_TLS_SIZE) return NULL;
++
++        if (initvalue) {
++            memcpy(tls_storage[tid], initvalue, sz);
++        } else {
++            memset(tls_storage[tid], 0, sz);
++        }
++
++        pthread_setspecific(*k, tls_storage[tid]);
++        ptr = tls_storage[tid];
++    }
++return ptr;
++}
++
++static void *__tlssValue(tlss_t *a, const void *initvalue) {
++    if (a->sz > MAX_TLS_SIZE) {
++        return NULL;
++    }
++    return __tlssPtrAlloc(a->sz, &(a->key), &(a->once), initvalue);
++}
++
++#define TLS_VAR(tls_obj, type, initval_ptr) (*(type *)__tlssValue(&(tls_obj), (initval_ptr)))
++
++#endif // MANUAL_TLS_H
++
