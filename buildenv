@@ -1,6 +1,6 @@
 # Update bump details accordingly. Use bump check to confirm.
 # bump: mimalloc-version /MIMALLOC_VERSION="(.*)"/ https://github.com/microsoft/mimalloc.git|re:/(^\s*2\.[0-9.]+)/$1/|semver:*
-MIMALLOC_VERSION="2.2.3" # Specify a stable release
+MIMALLOC_VERSION="2.2.4" # Specify a stable release
 export ZOPEN_STABLE_TAG="v${MIMALLOC_VERSION}"
 
 ###
